@@ -120,14 +120,6 @@ else:
 wqi_range = st.sidebar.slider("WQI Range", 0.0, 100.0, (0.0, 100.0))
 
 st.sidebar.markdown("---")
-active_tab = st.sidebar.radio("Navigate", [
-    "📊 Overview",
-    "🗺️ Risk Heatmap",
-    "📈 Trends & Seasonal",
-    "🔬 Parameter Analysis",
-    "🤖 Predict (ML)",
-    "📤 Upload New Data",
-])
 
 # ─── Apply filters ────────────────────────────────────────────────────────────
 filt = df.copy()
@@ -146,12 +138,20 @@ st.title("💧 AquaIntel Analytics")
 st.markdown(f"**{len(filt):,}** records · {len(sel_states)} state(s) · "
             f"{data_source.upper()} data")
 st.markdown("---")
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+    "Overview",
+    "Risk Heatmap",
+    "Trends",
+    "Parameter Analysis",
+    "Predict",
+    "Upload Data"
+])
 
 
 # ════════════════════════════════════════════════════════════════════════════
 # TAB 1 — OVERVIEW
 # ════════════════════════════════════════════════════════════════════════════
-if active_tab == "📊 Overview":
+with tab1:
     col1, col2, col3, col4, col5 = st.columns(5)
 
     with col1:
@@ -239,7 +239,7 @@ if active_tab == "📊 Overview":
 # ════════════════════════════════════════════════════════════════════════════
 # TAB 2 — RISK HEATMAP
 # ════════════════════════════════════════════════════════════════════════════
-elif active_tab == "🗺️ Risk Heatmap":
+with tab2:
     st.markdown("### 🗺️ Spatial Risk Heatmap")
 
     if "latitude" not in filt.columns or "longitude" not in filt.columns:
@@ -304,7 +304,7 @@ elif active_tab == "🗺️ Risk Heatmap":
 # ════════════════════════════════════════════════════════════════════════════
 # TAB 3 — TRENDS & SEASONAL
 # ════════════════════════════════════════════════════════════════════════════
-elif active_tab == "📈 Trends & Seasonal":
+with tab3:
     st.markdown("### 📈 Temporal Trends")
 
     param_trend = st.selectbox("Parameter",
@@ -370,7 +370,7 @@ elif active_tab == "📈 Trends & Seasonal":
 # ════════════════════════════════════════════════════════════════════════════
 # TAB 4 — PARAMETER ANALYSIS
 # ════════════════════════════════════════════════════════════════════════════
-elif active_tab == "🔬 Parameter Analysis":
+with tab4:
     st.markdown("### 🔬 Deep Parameter Analysis")
 
     avail = [f for f in CORE_FEATURES if f in filt.columns]
@@ -435,7 +435,7 @@ elif active_tab == "🔬 Parameter Analysis":
 # ════════════════════════════════════════════════════════════════════════════
 # TAB 5 — ML PREDICTION
 # ════════════════════════════════════════════════════════════════════════════
-elif active_tab == "🤖 Predict (ML)":
+with tab5:
     st.markdown("### 🤖 Water Quality Prediction")
     st.markdown("Enter water sample values to get an instant RFWQI safety assessment.")
 
@@ -583,7 +583,7 @@ elif active_tab == "🤖 Predict (ML)":
 # ════════════════════════════════════════════════════════════════════════════
 # TAB 6 — UPLOAD NEW DATA
 # ════════════════════════════════════════════════════════════════════════════
-elif active_tab == "📤 Upload New Data":
+with tab6:
     st.markdown("### 📤 Upload New Dataset")
     st.markdown(
         "Upload any CWC-format CSV. Columns are auto-detected and normalised. "
