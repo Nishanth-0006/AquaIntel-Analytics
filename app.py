@@ -157,7 +157,7 @@ with tab2:
 
     if "latitude" in filt.columns:
 
-        map_df = filt.dropna(subset=["latitude", "longitude", "WQI"])
+        map_df = filt.dropna(subset=["latitude", "longitude", "WQI", "water_quality"])
 
         if len(map_df) == 0:
             st.warning("No valid coordinates after filtering")
