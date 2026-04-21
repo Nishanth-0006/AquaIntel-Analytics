@@ -21,7 +21,7 @@ from scipy import stats
 
 from utils.data_loader import (
     load_all_csvs, generate_synthetic_cwc, preprocess,
-    CORE_FEATURES, BIS_STANDARDS, LITE_FEATURES, STATE_CODES
+    CORE_FEATURES, BIS_STANDARDS, STATE_CODES
 )
 
 FIGURES_DIR = os.path.join(os.path.dirname(__file__), "..", "figures")

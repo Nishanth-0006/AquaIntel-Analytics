@@ -205,9 +205,6 @@ BIS_STANDARDS = {
     "fecal_coliform":   {"max": 0},
 }
 
-# Vital proxy features for the "Lite" model
-LITE_FEATURES = ["pH", "conductivity", "nitrates"]
-
 # All numeric feature columns (used for full model)
 CORE_FEATURES = [
     "pH", "conductivity", "turbidity", "temperature",

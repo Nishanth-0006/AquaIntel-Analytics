@@ -59,7 +59,6 @@ To add a new state column alias, add one line to `RENAME_MAP` in `utils/data_loa
 |-------------|---------------------------|----------------|-----------------------------|
 | RF Full     | All available parameters  | ≥ 92%          | Municipalities, industry    |
 | XGB Full    | All available parameters  | ≥ 93%          | Municipalities, industry    |
-| RF Lite     | pH, Conductivity, Nitrates| ≥ 88%          | Schools, rural, low-cost    |
 
 All models use:
 - Rank Centroid Weighting for WQI computation

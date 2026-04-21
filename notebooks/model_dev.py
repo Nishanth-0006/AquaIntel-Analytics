@@ -3,7 +3,6 @@ AquaIntel Analytics — Model Development
 Trains:
   1. Full RF-WQI model (all available features)
   2. Full XGBoost model
-  3. Lite model (3 vital proxy features: pH, conductivity, nitrates)
 Run: python model_dev.py
 """
 
@@ -36,7 +35,7 @@ except ImportError:
 
 from utils.data_loader import (
     load_all_csvs, generate_synthetic_cwc, preprocess,
-    CORE_FEATURES, LITE_FEATURES
+    CORE_FEATURES
 )
 
 MODELS_DIR  = os.path.join(os.path.dirname(__file__), "..", "models")
@@ -60,7 +59,6 @@ print(f"Class balance:\n{df['is_safe'].value_counts(normalize=True).round(3)}\n"
 
 # ─── Feature sets ────────────────────────────────────────────────────────────
 all_features  = [f for f in CORE_FEATURES if f in df.columns]
-lite_features = [f for f in LITE_FEATURES  if f in df.columns]
 
 TARGET = "is_safe"
 
@@ -218,64 +216,6 @@ if HAS_XGB:
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# MODEL 3 — Lite Model (3 vital proxy features)
-# ════════════════════════════════════════════════════════════════════════════
-print(f"\n⚡  Lite model features: {lite_features}")
-X_lite = df[lite_features]
-
-rf_lite = RandomForestClassifier(
-    n_estimators=150, max_depth=8, class_weight="balanced",
-    random_state=42, n_jobs=-1)
-pipe_lite = build_pipeline(rf_lite)
-
-cv_lite = evaluate_model(pipe_lite, X_lite, y, "Lite RF (pH, Conductivity, Nitrates)")
-
-plot_confusion_matrix(
-    build_pipeline(RandomForestClassifier(n_estimators=150, max_depth=8,
-                                          class_weight="balanced", random_state=42)),
-    X_lite, y, "RF Lite",
-    f"{FIGURES_DIR}/cm_rf_lite.png")
-print("✅  cm_rf_lite.png")
-
-# Decision boundary plot for Lite (2D: pH vs nitrates)
-if "pH" in lite_features and "nitrates" in lite_features:
-    from sklearn.model_selection import train_test_split
-    feat2 = ["pH", "nitrates"]
-    X2 = df[feat2].fillna(df[feat2].median())
-    X_tr2, X_te2, y_tr2, y_te2 = train_test_split(X2, y, test_size=0.2,
-                                                    random_state=42, stratify=y)
-    clf2 = Pipeline([("imp", SimpleImputer()), ("clf",
-           RandomForestClassifier(n_estimators=100, max_depth=6, random_state=42))])
-    clf2.fit(X_tr2, y_tr2)
-
-    xx, yy = np.meshgrid(np.linspace(X2["pH"].min()-0.5, X2["pH"].max()+0.5, 200),
-                          np.linspace(X2["nitrates"].min()-1, X2["nitrates"].max()+5, 200))
-    Z = clf2.predict(np.c_[xx.ravel(), yy.ravel()]).reshape(xx.shape)
-
-    fig, ax = plt.subplots(figsize=(8, 6))
-    ax.contourf(xx, yy, Z, alpha=0.3, cmap="RdYlGn")
-    sc = ax.scatter(X_te2["pH"], X_te2["nitrates"], c=y_te2,
-                    cmap="RdYlGn", s=10, alpha=0.6, edgecolors="none")
-    ax.set_xlabel("pH")
-    ax.set_ylabel("Nitrates (mg/L)")
-    ax.set_title("Lite Model Decision Boundary: pH vs Nitrates")
-    ax.axvline(6.5, color="gray", ls="--", lw=1, label="BIS pH min")
-    ax.axvline(8.5, color="gray", ls="--", lw=1, label="BIS pH max")
-    ax.axhline(45, color="red", ls="--", lw=1, label="BIS NO₃ limit")
-    ax.legend(fontsize=8)
-    fig.colorbar(sc, ax=ax, label="0=Unsafe, 1=Safe")
-    fig.savefig(f"{FIGURES_DIR}/lite_decision_boundary.png", dpi=150, bbox_inches="tight")
-    plt.close()
-    print("✅  lite_decision_boundary.png")
-
-pipe_lite.fit(X_lite, y)
-joblib.dump({"model": pipe_lite, "features": lite_features, "target": TARGET,
-             "type": "lite", "algo": "RandomForest"},
-            f"{MODELS_DIR}/rf_lite.pkl")
-print("✅  rf_lite.pkl saved")
-
-
-# ════════════════════════════════════════════════════════════════════════════
 # Comparison Summary
 # ════════════════════════════════════════════════════════════════════════════
 print("\n" + "="*60)
@@ -287,12 +227,11 @@ def extract_cv(cv_results):
         "Accuracy": f"{cv_results['test_accuracy'].mean():.4f} ± {cv_results['test_accuracy'].std():.4f}",
         "F1":       f"{cv_results['test_f1_weighted'].mean():.4f} ± {cv_results['test_f1_weighted'].std():.4f}",
         "AUC-ROC":  f"{cv_results['test_roc_auc'].mean():.4f} ± {cv_results['test_roc_auc'].std():.4f}",
-        "Features": len(all_features if "all" in str(cv_results) else lite_features),
+        "Features": len(all_features),
     }
 
 rows = [
     {"Model": "RF Full",  **{k: v for k, v in extract_cv(cv_rf).items()}},
-    {"Model": "RF Lite",  **{k: v for k, v in extract_cv(cv_lite).items()}},
 ]
 if HAS_XGB:
     rows.insert(1, {"Model": "XGB Full", **{k: v for k, v in extract_cv(cv_xgb).items()}})

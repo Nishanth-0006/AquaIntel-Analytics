@@ -10,7 +10,7 @@ import streamlit as st
 
 from utils.data_loader import (
     load_all_csvs, generate_synthetic_cwc, preprocess,
-    CORE_FEATURES, BIS_STANDARDS, LITE_FEATURES
+    CORE_FEATURES, BIS_STANDARDS
 )
 
 # ─── Page config ─────────────────────────────────────────────
@@ -55,7 +55,7 @@ def load_data():
 def load_models():
     model_dir = os.path.join(os.path.dirname(__file__), "models")
     models = {}
-    for f in ["rf_full.pkl", "rf_lite.pkl", "xgb_full.pkl"]:
+    for f in ["rf_full.pkl", "xgb_full.pkl"]:
         path = os.path.join(model_dir, f)
         if os.path.exists(path):
             models[f.replace(".pkl", "")] = joblib.load(path)
