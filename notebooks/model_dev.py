@@ -1,8 +1,9 @@
 """
 AquaIntel Analytics — Model Development
 Trains:
-  1. Full RF-WQI model (all available features)
+  1. Full RF-WQI model (all available features) - MAIN
   2. Full XGBoost model
+  3. Soft Hybrid (RF + XGB ensemble voting)
 Run: python model_dev.py
 """
 
@@ -24,6 +25,7 @@ from sklearn.metrics import (classification_report, confusion_matrix,
 from sklearn.inspection import permutation_importance
 from sklearn.pipeline import Pipeline
 from sklearn.impute import SimpleImputer
+from sklearn.base import BaseEstimator, ClassifierMixin
 from imblearn.over_sampling import SMOTE
 
 try:
@@ -142,6 +144,30 @@ def plot_learning_curve(pipe, X, y, name, outpath):
     fig.savefig(outpath, dpi=150, bbox_inches="tight")
     plt.close()
 
+# ─── Soft Hybrid Voting Class ───────────────────────────────────────────────
+class SoftVotingHybrid(BaseEstimator, ClassifierMixin):
+    """Soft voting ensemble combining RF and XGB predictions."""
+    def __init__(self, rf_model=None, xgb_model=None):
+        self.rf_model = rf_model
+        self.xgb_model = xgb_model
+    
+    def fit(self, X, y):
+        """Fit both models (no-op if models already provided)."""
+        if self.rf_model is None or self.xgb_model is None:
+            # This shouldn't happen in our use case
+            raise ValueError("Both rf_model and xgb_model must be provided")
+        return self
+    
+    def predict_proba(self, X):
+        """Average probabilities from both models."""
+        rf_proba = self.rf_model.predict_proba(X)
+        xgb_proba = self.xgb_model.predict_proba(X)
+        return (rf_proba + xgb_proba) / 2.0
+    
+    def predict(self, X):
+        """Predict based on averaged probabilities."""
+        proba = self.predict_proba(X)
+        return np.argmax(proba, axis=1)
 
 # ════════════════════════════════════════════════════════════════════════════
 # MODEL 1 — Full Random Forest
@@ -216,6 +242,57 @@ if HAS_XGB:
 
 
 # ════════════════════════════════════════════════════════════════════════════
+# MODEL 3 — Soft Hybrid (RF + XGB Ensemble)
+# ════════════════════════════════════════════════════════════════════════════
+if HAS_XGB:
+    # Use trained model pipelines to create hybrid
+    hybrid_model = SoftVotingHybrid(pipe_rf, pipe_xgb)
+    
+    # Evaluate hybrid on test split
+    from sklearn.model_selection import train_test_split
+    X_tr, X_te, y_tr, y_te = train_test_split(X_full, y, test_size=0.2,
+                                               random_state=42, stratify=y)
+    hybrid_model.fit(X_tr, y_tr)
+    
+    # Get predictions and metrics
+    y_pred_hybrid = hybrid_model.predict(X_te)
+    from sklearn.metrics import accuracy_score, f1_score, roc_auc_score
+    acc_hybrid = accuracy_score(y_te, y_pred_hybrid)
+    f1_hybrid = f1_score(y_te, y_pred_hybrid, average='weighted')
+    auc_hybrid = roc_auc_score(y_te, hybrid_model.predict_proba(X_te)[:, 1])
+    
+    print(f"\n{'='*50}")
+    print(f"  Soft Hybrid (RF + XGB)")
+    print(f"{'='*50}")
+    print(f"  accuracy          : {acc_hybrid:.4f}")
+    print(f"  f1_weighted       : {f1_hybrid:.4f}")
+    print(f"  roc_auc           : {auc_hybrid:.4f}")
+    print(f"  Classification report:\n{classification_report(y_te, y_pred_hybrid, target_names=['Unsafe','Safe'])}")
+    
+    # Create CV-compatible results for summary
+    cv_hybrid = {
+        'test_accuracy': np.array([acc_hybrid]),
+        'test_f1_weighted': np.array([f1_hybrid]),
+        'test_roc_auc': np.array([auc_hybrid]),
+    }
+    
+    # Plot confusion matrix
+    cm = confusion_matrix(y_te, y_pred_hybrid)
+    fig, ax = plt.subplots(figsize=(5, 4))
+    ConfusionMatrixDisplay(cm, display_labels=["Unsafe", "Safe"]).plot(ax=ax, cmap="Blues")
+    ax.set_title(f"Confusion Matrix — Soft Hybrid")
+    fig.savefig(f"{FIGURES_DIR}/cm_hybrid_soft.png", dpi=150, bbox_inches="tight")
+    plt.close()
+    print("✅  cm_hybrid_soft.png")
+    
+    # Save hybrid model
+    joblib.dump({"model": hybrid_model, "features": all_features, "target": TARGET,
+                 "type": "hybrid", "algo": "SoftVoting(RF+XGB)"},
+                f"{MODELS_DIR}/hybrid_soft.pkl")
+    print("✅  hybrid_soft.pkl saved")
+
+
+# ════════════════════════════════════════════════════════════════════════════
 # Comparison Summary
 # ════════════════════════════════════════════════════════════════════════════
 print("\n" + "="*60)
@@ -231,10 +308,12 @@ def extract_cv(cv_results):
     }
 
 rows = [
-    {"Model": "RF Full",  **{k: v for k, v in extract_cv(cv_rf).items()}},
+    {"Model": "RF Full (Main)",  **{k: v for k, v in extract_cv(cv_rf).items()}},
 ]
 if HAS_XGB:
     rows.insert(1, {"Model": "XGB Full", **{k: v for k, v in extract_cv(cv_xgb).items()}})
+    if 'cv_hybrid' in locals():
+        rows.insert(2, {"Model": "Soft Hybrid", **{k: v for k, v in extract_cv(cv_hybrid).items()}})
 
 summary = pd.DataFrame(rows)
 print(summary.to_string(index=False))

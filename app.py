@@ -55,7 +55,7 @@ def load_data():
 def load_models():
     model_dir = os.path.join(os.path.dirname(__file__), "models")
     models = {}
-    for f in ["rf_full.pkl", "xgb_full.pkl"]:
+    for f in ["rf_full.pkl", "xgb_full.pkl", "hybrid_soft.pkl"]:
         path = os.path.join(model_dir, f)
         if os.path.exists(path):
             models[f.replace(".pkl", "")] = joblib.load(path)
@@ -264,7 +264,10 @@ with tab5:
 
     if models:
 
-        model = models["rf_full"]["model"]
+        st.markdown("### Water Quality Prediction")
+        
+        # Get features from RF model
+        model_rf = models["rf_full"]["model"]
         features = models["rf_full"]["features"]
 
         inputs = {}
@@ -275,8 +278,51 @@ with tab5:
             inputs[feat] = cols[i % 3].number_input(feat, value=0.0)
 
         if st.button("Predict"):
-            pred = model.predict(pd.DataFrame([inputs]))[0]
-            st.success("SAFE" if pred == 1 else "UNSAFE")
+            input_df = pd.DataFrame([inputs])
+            
+            col1, col2, col3 = st.columns(3)
+            
+            # RF Full (Main)
+            with col1:
+                rf_pred = model_rf.predict(input_df)[0]
+                if rf_pred == 1:
+                    st.success("✅ SAFE (RF)")
+                else:
+                    st.error("⚠️ UNSAFE (RF)")
+            
+            # XGB Full
+            if "xgb_full" in models:
+                with col2:
+                    model_xgb = models["xgb_full"]["model"]
+                    xgb_pred = model_xgb.predict(input_df)[0]
+                    if xgb_pred == 1:
+                        st.success("✅ SAFE (XGB)")
+                    else:
+                        st.error("⚠️ UNSAFE (XGB)")
+            
+            # Soft Hybrid
+            if "hybrid_soft" in models:
+                with col3:
+                    model_hybrid = models["hybrid_soft"]["model"]
+                    hybrid_pred = model_hybrid.predict(input_df)[0]
+                    if hybrid_pred == 1:
+                        st.success("✅ SAFE (Hybrid)")
+                    else:
+                        st.error("⚠️ UNSAFE (Hybrid)")
+            
+            # Summary
+            st.markdown("---")
+            st.markdown("**Model Predictions Summary:**")
+            pred_summary = {
+                "RF (Main)": "Safe" if rf_pred == 1 else "Unsafe",
+            }
+            if "xgb_full" in models:
+                pred_summary["XGB"] = "Safe" if xgb_pred == 1 else "Unsafe"
+            if "hybrid_soft" in models:
+                pred_summary["Soft Hybrid"] = "Safe" if hybrid_pred == 1 else "Unsafe"
+            
+            summary_df = pd.DataFrame(list(pred_summary.items()), columns=["Model", "Prediction"])
+            st.dataframe(summary_df, use_container_width=True)
 
     else:
         st.warning("Run model_dev.py first")
