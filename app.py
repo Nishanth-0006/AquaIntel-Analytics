@@ -327,7 +327,11 @@ st.sidebar.markdown("---")
 # Location Group
 st.sidebar.markdown("##### 📍 Location")
 states = sorted(df["state"].dropna().unique())
-sel_states = st.sidebar.multiselect("Select States", states, key="state_filter", default=st.session_state.state_filter if "state_filter" in st.session_state else states[:10])
+sel_states = st.sidebar.multiselect(
+    "Select States",
+    states,
+    key="state_filter"
+)
 
 # Time Period Group
 st.sidebar.markdown("##### 📅 Date Range")
@@ -375,6 +379,51 @@ filt = apply_filters(df, sel_states, sel_years, wqi_range, search_query)
 # downsample for performance
 plot_df = filt.sample(min(3000, len(filt)), random_state=42)
 
+
+# calculates distance between two coordinates (km)
+def haversine(lat1, lon1, lat2, lon2):
+    R = 6371
+    lat1, lon1, lat2, lon2 = map(np.radians, [lat1, lon1, lat2, lon2])
+    
+    dlat = lat2 - lat1
+    dlon = lon2 - lon1
+    
+    a = np.sin(dlat/2)**2 + np.cos(lat1)*np.cos(lat2)*np.sin(dlon/2)**2
+    c = 2*np.arcsin(np.sqrt(a))
+    
+    return R * c
+
+# finds nearest stations to user location
+def get_nearest_stations(df, user_lat, user_lon, n=3):
+
+    df = df.dropna(subset=["latitude", "longitude"]).copy()
+
+    # 🔥 LIMIT DATA FIRST
+    df = df.sample(min(4000, len(df)), random_state=42)
+
+    # VECTOR DISTANCE
+    lat1 = np.radians(user_lat)
+    lon1 = np.radians(user_lon)
+
+    lat2 = np.radians(df["latitude"].values)
+    lon2 = np.radians(df["longitude"].values)
+
+    dlat = lat2 - lat1
+    dlon = lon2 - lon1
+
+    a = np.sin(dlat/2)**2 + np.cos(lat1)*np.cos(lat2)*np.sin(dlon/2)**2
+    c = 2 * np.arcsin(np.sqrt(a))
+
+    df["distance_km"] = 6371 * c
+
+    df = df.sort_values("distance_km")
+
+    df = df.drop_duplicates(subset=["latitude", "longitude"])
+
+    if "station" in df.columns:
+        df = df.drop_duplicates(subset=["station"])
+
+    return df.head(n)
 
 # ─── Header ─────────────────────────────────────────────────
 st.title("💧 AquaIntel Analytics")
@@ -438,7 +487,7 @@ with tab1:
 
     # 1. Overall WQI Score
     with kpi_col1:
-        with st.container(border=True):
+        with st.container():
             st.markdown("""
                 <div class='card-header-pro'>
                     <div class='icon-box' style='background: #e1f5fe; color: #039be5;'>📊</div>
@@ -461,7 +510,7 @@ with tab1:
 
     # 2. Total Records
     with kpi_col2:
-        with st.container(border=True):
+        with st.container():
             st.markdown("""
                 <div class='card-header-pro'>
                     <div class='icon-box' style='background: #f0fdf4; color: #16a34a;'>📑</div>
@@ -476,7 +525,7 @@ with tab1:
 
     # 3. Active States
     with kpi_col3:
-        with st.container(border=True):
+        with st.container():
             st.markdown("""
                 <div class='card-header-pro'>
                     <div class='icon-box' style='background: #fdf2f8; color: #db2777;'>📍</div>
@@ -491,7 +540,7 @@ with tab1:
 
     # 4. Safety Index
     with kpi_col4:
-        with st.container(border=True):
+        with st.container():
             st.markdown("""
                 <div class='card-header-pro'>
                     <div class='icon-box' style='background: #fff1f2; color: #e11d48;'>🛡️</div>
@@ -734,7 +783,7 @@ with tab2:
                             coloraxis_colorbar=dict(title="WQI", x=1.02, len=0.8)
                         )
                         fig.update_traces(opacity=0.9)
-                        st.plotly_chart(fig, width='stretch', config={'scrollZoom': True, 'displayModeBar': True, 'displaylogo': False})
+                        st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True, 'displaylogo': False})
 
                 st.markdown("")
 
@@ -791,7 +840,7 @@ with tab2:
                         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
                         margin=dict(l=0, r=0, t=30, b=0)
                     )
-                    st.plotly_chart(fig2, width='stretch', config={'scrollZoom': True, 'displayModeBar': True, 'displaylogo': False})
+                    st.plotly_chart(fig2, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True, 'displaylogo': False})
 
                 # Enhanced statistics with visual indicators
                 st.markdown("---")
@@ -840,12 +889,12 @@ with tab2:
                                     total_stations=("state", "count")
                                 ).sort_values("unsafe_count", ascending=False).head(10)
                                 state_risk.columns = ["Unsafe Count", "Avg WQI", "Max WQI", "Total Stations"]
-                                st.dataframe(state_risk, width='stretch')
+                                st.dataframe(state_risk, use_container_width=True)
                                 
                                 # Risk level visualization
                                 st.markdown("#### Risk Level Heatmap")
                                 risk_heatmap = state_risk[["Unsafe Count", "Avg WQI"]]
-                                st.dataframe(risk_heatmap, width='stretch')
+                                st.dataframe(risk_heatmap, use_container_width=True)
                             
                             with tab_b:
                                 st.markdown("#### Water Quality Distribution")
@@ -859,7 +908,7 @@ with tab2:
                                 )
                                 fig_dist.update_traces(textposition='inside', textinfo='percent+label')
                                 fig_dist.update_layout(height=400)
-                                st.plotly_chart(fig_dist, width='stretch', config={'displayModeBar': True, 'displaylogo': False})
+                                st.plotly_chart(fig_dist, use_container_width=True, config={'displayModeBar': True, 'displaylogo': False})
                         else:
                             st.success("✅ All stations meet safety standards in current view")
                 else:
@@ -1014,6 +1063,150 @@ with tab5:
 
     else:
         st.warning("Run model_dev.py first")
+    
+    
+    st.markdown("---")
+    st.markdown("## 📍 Location-based Water Safety")
+
+    # user inputs
+    user_lat = st.number_input("Enter Latitude", value=12.97)
+    user_lon = st.number_input("Enter Longitude", value=77.59)
+
+    if st.button("Analyze Location"):
+        st.session_state.run_analysis = True
+
+    if st.session_state.get("run_analysis"):
+
+        nearest = get_nearest_stations(filt, user_lat, user_lon, n=3)
+        if not nearest.empty and nearest["distance_km"].min() > 30:
+            st.warning("⚠️ No nearby monitoring stations found. Results may be less accurate.")
+
+        if "rf_full" not in models:
+            st.error("Model not loaded")
+        else:
+            model = models["rf_full"]["model"]
+        features = models["rf_full"]["features"]
+
+        st.markdown("### Nearest Stations")
+
+        weighted_sum = 0
+        total_weight = 0
+
+        results = []
+
+        for _, row in nearest.iterrows():
+
+            input_data = pd.DataFrame([{f: row.get(f, 0) for f in features}])
+
+            pred = model.predict(input_data)[0]
+            proba = model.predict_proba(input_data)[0][1]
+
+            
+            distance = row["distance_km"]
+            adjusted_conf = proba * np.exp(-distance / 150)
+            weight = np.exp(-distance / 50)
+
+            weighted_sum += proba * weight
+            total_weight += weight
+
+            prediction = "SAFE" if pred == 1 else "UNSAFE"
+
+            # 🔥 enforce domain logic
+            if row["WQI"] is not None:
+                if row["WQI"] > 50:
+                    prediction = "UNSAFE"
+
+            results.append({
+                "Station": row.get("station", "Unknown"),
+                "Distance (km)": round(distance, 2),
+                "WQI": row.get("WQI", None),
+                "Prediction": prediction,
+                "Confidence": adjusted_conf,  # keep numeric for plotting
+
+                # 🔥 ADD THESE
+                "latitude": row["latitude"],
+                "longitude": row["longitude"]
+            })
+        results_df = pd.DataFrame(results)
+
+        st.dataframe(results_df)
+
+        # final weighted decision
+        final_score = weighted_sum / total_weight if total_weight > 0 else 0
+
+        st.markdown("### Final Decision")
+
+        st.write(f"Weighted Safety Score: {final_score:.2%}")
+
+        if final_score > 0.5:
+            st.success("Overall: Likely SAFE water in this area")
+        else:
+            st.error("Overall: Likely UNSAFE water in this area")
+            
+        fig = px.scatter_mapbox(
+            results_df,
+            lat="latitude",
+            lon="longitude",
+
+            # match your heatmap logic
+            color="Prediction",   # SAFE / UNSAFE
+            size="WQI",
+            size_max=18,
+
+            zoom=6,
+            center={"lat": user_lat, "lon": user_lon},
+
+            mapbox_style="carto-positron",  # SAME as your other maps
+
+            hover_data={
+                "Station": True,
+                "Distance (km)": True,
+                "Confidence": True,
+                "latitude": False,
+                "longitude": False
+            }
+        )
+
+        fig.add_scattermapbox(
+            lat=[user_lat],
+            lon=[user_lon],
+            mode="markers",
+            marker=dict(size=14, color="black"),
+            name="Your Location"
+        )
+
+        fig.update_traces(marker=dict(opacity=0.85))
+
+        fig.update_layout(
+            height=500,
+            margin=dict(l=0, r=0, t=30, b=0),
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="right",
+                x=1
+            )
+        )
+        
+        for _, row in results_df.iterrows():
+
+            fig.add_scattermapbox(
+                lat=[user_lat, row["latitude"]],
+                lon=[user_lon, row["longitude"]],
+                mode="lines",
+
+                line=dict(
+                    width=2,
+                    color="red",
+                ),
+
+                name=f'Connection to {row["Station"]}',
+                hoverinfo="none",
+                showlegend=False
+            )
+        
+        st.plotly_chart(fig, use_container_width=True)
 
 
 # ════════════════════════════════════════════════════════════
