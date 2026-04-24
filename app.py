@@ -344,6 +344,7 @@ button[role="tab"][aria-selected="true"] {
 
 
 # ─── Color mapping ───────────────────────────────────────────
+# base colors for water quality categories
 QUAL_COLORS = {
     "Excellent": "#27ae60", # Green
     "Good":      "#f1c40f", # Yellow
@@ -388,7 +389,7 @@ def update_chart_layout(fig):
 
 
 
-# returns only colors present in dataset
+
 def get_valid_colors(df, column, color_map):
     present = df[column].dropna().astype(str).str.strip().unique()
     return {k: v for k, v in color_map.items() if k in present}
@@ -488,8 +489,7 @@ def build_district_choropleth_frame(frame):
     return district_df
 
 
-# ─── Data load ───────────────────────────────────────────────
-# loads dataset (real or synthetic)
+
 @st.cache_data
 def load_data():
     data_dir = os.path.join(os.path.dirname(__file__), "data")
@@ -507,7 +507,7 @@ def load_data():
     return preprocess(raw), source
 
 
-# loads models once
+
 @st.cache_resource
 def load_models():
     model_dir = os.path.join(os.path.dirname(__file__), "models")
@@ -525,8 +525,9 @@ def load_models():
 df, source = load_data()
 models = load_models()
 
-# ─── Sidebar (Glass Control Center) ──────────────────────────
-st.sidebar.markdown('<div class="sidebar-header">Control Center</div>', unsafe_allow_html=True)
+# ─── Sidebar ─────────────────────────────────────────────────
+# user filters
+st.sidebar.title("Filters")
 
 
 # Global Search
@@ -587,121 +588,28 @@ if st.sidebar.button("Reset Dashboard", use_container_width=True):
 
 # ─── Filtering ───────────────────────────────────────────────
 # applies filters to dataset
-@st.cache_data
-def apply_filters(df, sel_states, sel_years, wqi_range, search_query):
-    filt = df.copy()
-    
-    # 1. Search Query (Global text search)
-    if search_query:
-        # Search in all string columns
-        mask = filt.apply(lambda row: search_query.lower() in str(row).lower(), axis=1)
-        filt = filt[mask]
-    
-    # 2. State Filter
-    if sel_states:
-        filt = filt[filt["state"].isin(sel_states)]
-    
-    # 3. Year Filter
-    if sel_years and "year" in filt.columns:
-        filt = filt[(filt["year"] >= sel_years[0]) & (filt["year"] <= sel_years[1])]
-    
-    # 4. WQI Filter
-    filt = filt[(filt["WQI"] >= wqi_range[0]) & (filt["WQI"] <= wqi_range[1])]
-    
-    # clean labels
-    if "water_quality" in filt.columns:
-        filt["water_quality"] = filt["water_quality"].astype(str).str.strip()
-    
-    return filt
+filt = df.copy()
 
-filt = apply_filters(df, sel_states, sel_years, wqi_range, search_query)
+if sel_states:
+    filt = filt[filt["state"].isin(sel_states)]
 
-# downsample for performance
+if sel_years and "year" in filt.columns:
+    filt = filt[(filt["year"] >= sel_years[0]) & (filt["year"] <= sel_years[1])]
+
+filt = filt[(filt["WQI"] >= wqi_range[0]) & (filt["WQI"] <= wqi_range[1])]
+
+# clean labels (prevents bugs)
+filt["water_quality"] = filt["water_quality"].astype(str).str.strip()
+
+
 plot_df = filt.sample(min(3000, len(filt)), random_state=42)
 
 
-# calculates distance between two coordinates (km)
-def haversine(lat1, lon1, lat2, lon2):
-    R = 6371
-    lat1, lon1, lat2, lon2 = map(np.radians, [lat1, lon1, lat2, lon2])
-    
-    dlat = lat2 - lat1
-    dlon = lon2 - lon1
-    
-    a = np.sin(dlat/2)**2 + np.cos(lat1)*np.cos(lat2)*np.sin(dlon/2)**2
-    c = 2*np.arcsin(np.sqrt(a))
-    
-    return R * c
-
-# finds nearest stations to user location
-def get_nearest_stations(df, user_lat, user_lon, n=3):
-
-    df = df.dropna(subset=["latitude", "longitude"]).copy()
-
-    # 🔥 LIMIT DATA FIRST
-    df = df.sample(min(4000, len(df)), random_state=42)
-
-    # VECTOR DISTANCE
-    lat1 = np.radians(user_lat)
-    lon1 = np.radians(user_lon)
-
-    lat2 = np.radians(df["latitude"].values)
-    lon2 = np.radians(df["longitude"].values)
-
-    dlat = lat2 - lat1
-    dlon = lon2 - lon1
-
-    a = np.sin(dlat/2)**2 + np.cos(lat1)*np.cos(lat2)*np.sin(dlon/2)**2
-    c = 2 * np.arcsin(np.sqrt(a))
-
-    df["distance_km"] = 6371 * c
-
-    df = df.sort_values("distance_km")
-
-    df = df.drop_duplicates(subset=["latitude", "longitude"])
-
-    if "station" in df.columns:
-        df = df.drop_duplicates(subset=["station"])
-
-    return df.head(n)
-
-# ─── Header Section ──────────────────────────────────────────
-st.markdown("""<div class="centered-header">
-<div style="font-size: 5rem; margin-bottom: 0.5rem; filter: drop-shadow(0 10px 15px rgba(0,0,0,0.3));">💧</div>
-<h1 style="font-size: 3.5rem; font-weight: 800; color: #ffffff; margin: 0; letter-spacing: -2px; text-shadow: 0 4px 10px rgba(0,0,0,0.2);">AquaIntel Analytics Dashboard</h1>
-<p style="color: rgba(255, 255, 255, 0.8); font-size: 1.25rem; margin-top: 0.5rem; font-weight: 500;">Intelligent Water Quality Monitoring & Global Insight Engine</p>
-</div>""", unsafe_allow_html=True)
+# ─── Header ─────────────────────────────────────────────────
+st.title("💧 AquaIntel Analytics")
+st.markdown(f"**{len(filt):,} records** · Source: {source}")
 
 
-
-
-
-
-# ─── Problem Statement ───────────────────────────────────────
-st.markdown(f"""<div style="max-width: 900px; margin: 0 auto 3rem auto; background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(20px); border-radius: 80px; padding: 20px 40px; border: 1px solid rgba(255, 255, 255, 0.2); box-shadow: 0 10px 30px rgba(0,0,0,0.1);">
-<div style="display: flex; align-items: center; gap: 20px; width: 100%;">
-<div style="width: 50px; height: 50px; background: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; flex-shrink: 0;">🎯</div>
-<div style="flex-grow: 1; min-width: 0;">
-<h4 style="margin: 0; color: #ffffff; font-weight: 700; font-size: 1.1rem;">Strategic Analysis Goal</h4>
-<p style="margin: 2px 0 0 0; color: rgba(255, 255, 255, 0.85); font-size: 0.95rem; line-height: 1.4; overflow: hidden; text-overflow: ellipsis;">
-Water data is fragmented and poorly analyzed, causing delayed detection of contamination and ineffective decision-making.
-</p>
-</div>
-</div>
-</div>""", unsafe_allow_html=True)
-
-
-
-
-
-
-
-st.markdown(f"<div style='margin-bottom: 20px; color: var(--text-muted); font-size: 0.9rem;'><b>{len(filt):,} records</b> discovered · Source: <span style='color: var(--primary); font-weight: 600;'>{source.upper()}</span></div>", unsafe_allow_html=True)
-
-
-
-
-# ─── Tabs ───────────────────────────────────────────────────
 tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "Overview",
     "Risk Heatmap",
@@ -712,9 +620,6 @@ tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
 ])
 
 
-# ════════════════════════════════════════════════════════════
-# TAB 1 — OVERVIEW
-# ════════════════════════════════════════════════════════════
 with tab1:
 
     # Column detection for charts
@@ -972,7 +877,6 @@ with tab1:
 
 
 
-## ─── Heatmap ─────────────────────────────────────────────
 with tab2:
 
     st.markdown("### Water Quality Spatial Analysis")
@@ -1337,7 +1241,7 @@ with tab2:
 
 
 
-# ─── Trends ─────────────────────────────────────────────
+
 with tab3:
 
     st.markdown("### Trends")
@@ -1348,45 +1252,12 @@ with tab3:
         with st.spinner("Generating trend analysis..."):
             trend = filt.groupby("year")["WQI"].mean().reset_index()
 
-            if len(trend) == 0:
-                st.warning("No data after filtering")
-            else:
-                with st.container(border=True):
-                    # Static high-quality trend line
-                    fig = px.line(trend, x="year", y="WQI", markers=True, color_discrete_sequence=["#3b82f6"])
-                    fig.update_layout(height=400, margin=dict(l=0, r=0, t=30, b=0))
-                    fig = update_chart_layout(fig)
-                    st.plotly_chart(fig, use_container_width=True)
-
-
-                
-                # Trend statistics
-                st.markdown("### Trend Statistics")
-
-                tr_col1, tr_col2, tr_col3 = st.columns(3)
-                
-                with tr_col1:
-                    st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-                    st.metric("Years Analyzed", len(trend))
-                    st.markdown('</div>', unsafe_allow_html=True)
-                
-                with tr_col2:
-                    st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-                    st.metric("Avg WQI", round(trend["WQI"].mean(), 2))
-                    st.markdown('</div>', unsafe_allow_html=True)
-                
-                with tr_col3:
-                    st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-                    # Calculate trend direction
-                    if len(trend) >= 2:
-                        first_year = trend.iloc[0]["WQI"]
-                        last_year = trend.iloc[-1]["WQI"]
-                        trend_change = last_year - first_year
-                        trend_direction = "Improving ↓" if trend_change < 0 else "Deteriorating ↑"
-                        st.metric("Trend", trend_direction)
-                    else:
-                        st.metric("Trend", "Stable")
-                    st.markdown('</div>', unsafe_allow_html=True)
+        if len(trend) == 0:
+            st.warning("No data after filtering")
+        else:
+            fig = px.line(trend, x="year", y="WQI", markers=True)
+            fig.update_layout(height=400)
+            st.plotly_chart(fig, use_container_width=True)
 # ════════════════════════════════════════════════════════════
 # TAB 4 — ANALYSIS
 # ════════════════════════════════════════════════════════════
@@ -1421,9 +1292,7 @@ with tab4:
 
 
 
-# ════════════════════════════════════════════════════════════
-# TAB 5 — ML
-# ════════════════════════════════════════════════════════════
+
 with tab5:
 
     if models:
@@ -1655,9 +1524,7 @@ with tab5:
         st.plotly_chart(fig, use_container_width=True)
 
 
-# ════════════════════════════════════════════════════════════
-# TAB 6 — UPLOAD
-# ════════════════════════════════════════════════════════════
+
 with tab6:
 
     uploaded = st.file_uploader("Upload CSV", type=["csv"])
@@ -1669,6 +1536,5 @@ with tab6:
 
             st.write(new_df.head())
 
-            fig = px.histogram(new_df, x="WQI")
-            st.plotly_chart(fig, use_container_width=True)
-        
+        fig = px.histogram(new_df, x="WQI")
+        st.plotly_chart(fig, use_container_width=True)
