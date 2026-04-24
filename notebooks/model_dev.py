@@ -49,7 +49,8 @@ PALETTE = ["#1f4e79", "#2e86ab", "#a23b72", "#f18f01", "#c73e1d"]
 try:
     raw = load_all_csvs(DATA_DIR)
 except FileNotFoundError:
-    print("⚠️  Using synthetic data (no CSVs in /data)")
+    print("WARN: Using synthetic data (no CSVs in /data)")
+
     raw = generate_synthetic_cwc(n=8000)
 
 df = preprocess(raw)
@@ -160,28 +161,32 @@ plot_confusion_matrix(
                                           random_state=42, n_jobs=-1)),
     X_full, y, "RF Full",
     f"{FIGURES_DIR}/cm_rf_full.png")
-print("✅  cm_rf_full.png")
+print("[OK]  cm_rf_full.png")
+
 
 plot_feature_importance(
     build_pipeline(RandomForestClassifier(n_estimators=200, class_weight="balanced",
                                           random_state=42, n_jobs=-1)),
     all_features, "RF Full",
     f"{FIGURES_DIR}/fi_rf_full.png")
-print("✅  fi_rf_full.png")
+print("[OK]  fi_rf_full.png")
+
 
 plot_learning_curve(
     build_pipeline(RandomForestClassifier(n_estimators=100, class_weight="balanced",
                                           random_state=42, n_jobs=-1)),
     X_full, y, "RF Full",
     f"{FIGURES_DIR}/lc_rf_full.png")
-print("✅  lc_rf_full.png")
+print("[OK]  lc_rf_full.png")
+
 
 # Save trained model
 pipe_rf.fit(X_full, y)
 joblib.dump({"model": pipe_rf, "features": all_features, "target": TARGET,
              "type": "full", "algo": "RandomForest"},
             f"{MODELS_DIR}/rf_full.pkl")
-print("✅  rf_full.pkl saved")
+print("[OK]  rf_full.pkl saved")
+
 
 
 
@@ -209,7 +214,8 @@ rows = [
 summary = pd.DataFrame(rows)
 print(summary.to_string(index=False))
 summary.to_csv(f"{FIGURES_DIR}/model_comparison.csv", index=False)
-print("\n✅  model_comparison.csv saved")
-print("✅  Model development complete.")
+print("[OK]  model_comparison.csv saved")
+print("[OK]  Model development complete.")
+
 # Model update: RF (main), XGBoost, and RF+XGB hybrid added; Lite model removed
 
