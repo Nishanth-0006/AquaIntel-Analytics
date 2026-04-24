@@ -359,10 +359,11 @@ def update_chart_layout(fig):
         plot_bgcolor="rgba(0,0,0,0)",
         font=dict(color="#ffffff", family="Poppins, sans-serif"),
         title=dict(
-            font=dict(color="#ffffff", size=18, weight="bold"),
+            font=dict(color="#ffffff", size=18),
             x=0,
             xanchor="left"
         ),
+
         legend=dict(
             font=dict(color="#ffffff", size=12),
             bgcolor="rgba(0,0,0,0)",
