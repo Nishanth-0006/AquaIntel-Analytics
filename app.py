@@ -1557,6 +1557,42 @@ with tab5:
             st.dataframe(pd.DataFrame(list(pred_summary.items()), columns=["Model","Prediction"]))
     else:
         st.warning("No models found. Run `model_dev.py` first to train and save models.")
+                # ─────────────────────────────────────────────
+# ⚡ Lite Prediction (3 Parameter Version)
+# ─────────────────────────────────────────────
+st.markdown("---")
+
+st.markdown(
+    '<div style="font-size:1.5rem;font-weight:800;color:#0f172a;margin-bottom:0.5rem;">'
+    '⚡ Lite Water Quality Prediction</div>',
+    unsafe_allow_html=True,
+)
+
+st.caption("Quick estimation using pH, Conductivity, and Nitrates (for demo/educational use)")
+
+col1, col2, col3 = st.columns(3)
+
+ph = col1.number_input("pH", 0.0, 14.0, 7.0)
+cond = col2.number_input("Conductivity (µS/cm)", 0.0, 2000.0)
+nit = col3.number_input("Nitrates (mg/L)", 0.0, 100.0)
+if st.button("⚡ Run Lite Prediction", key="lite_btn", use_container_width=True):
+
+    score = 0
+
+    if ph < 6.5 or ph > 8.5:
+        score += 1
+    if cond > 750:
+        score += 1
+    if nit > 45:
+        score += 1
+
+    if score == 0:
+        st.success("✅ SAFE - Within acceptable limits")
+    elif score == 1:
+        st.warning("⚠️ MODERATE - Check recommended")
+    else:
+        st.error("🚨 UNSAFE - Treatment required")
+
 
     st.markdown("---")
     st.markdown(
