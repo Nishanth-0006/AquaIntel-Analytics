@@ -1,0 +1,2 @@
+﻿Remaining emojis:
+Line 27: '    page_icon="≡ƒÆº",'
