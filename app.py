@@ -1370,7 +1370,7 @@ with tab1:
             yaxis=dict(autorange="reversed"),
         )
         st.plotly_chart(fig_river, use_container_width=True)
-        with st.expander(" View Data Table"):
+        with st.expander(" River Data Table"):
             st.dataframe(river_summary, use_container_width=True)
     else:
         st.info("No river data available for current filters.")
@@ -1412,40 +1412,11 @@ with tab1:
         st.plotly_chart(fig_season, use_container_width=True)
         st.caption("Average WQI by month across all years. June–September = Monsoon Season. "
                    "Higher WQI during monsoon often indicates runoff contamination.")
-        with st.expander(" View Data Table"):
+        with st.expander(" Monthly Data Table"):
             st.dataframe(monthly[["Month","WQI"]].rename(columns={"WQI":"Avg WQI"}).round(2),
                          use_container_width=True)
 
-    # ── 3H: Download Report ────────────────────────────────────────────────────────
-    st.markdown("---")
-    st.markdown("**📥 Download Summary Report**")
 
-    if not filt.empty:
-        report_rows = []
-        for state_n, grp in filt.groupby("state"):
-            avail_p = [p for p in BIS_STANDARDS if p in grp.columns]
-            exceedances = {p: pct_exceeds(grp[p], BIS_STANDARDS[p]) for p in avail_p}
-            exceedances = {k: v for k, v in exceedances.items() if pd.notna(v)}
-            most_viol = max(exceedances, key=exceedances.get) if exceedances else "—"
-            most_viol_label = PARAM_LABELS.get(most_viol, most_viol)
-            s_count = grp[station_col].nunique() if station_col else len(grp)
-            sp = grp["is_safe"].mean() * 100 if "is_safe" in grp.columns else 0
-            report_rows.append({
-                "State":                  state_n,
-                "Stations":               s_count,
-                "Safe%":                  round(sp, 1),
-                "Avg WQI":                round(grp["WQI"].mean(), 1),
-                "Most Violated Parameter": most_viol_label,
-                "Status":                 safety_status(sp)[0],
-            })
-        report_df = pd.DataFrame(report_rows)
-        today = pd.Timestamp.now().strftime("%Y-%m-%d")
-        st.download_button(
-            "📥 Download Report (CSV)",
-            data=report_df.to_csv(index=False),
-            file_name=f"AquaIntel_Report_{today}.csv",
-            mime="text/csv",
-        )
 
     # ── 3I: Help & Glossary ────────────────────────────────────────────────────────
     with st.expander("Help & Glossary of Terms"):
