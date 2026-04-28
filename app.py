@@ -1130,7 +1130,7 @@ _dark = st.session_state.get("dark_mode", False)
 _head_txt = "#f1f5f9" if _dark else "#0f172a"
 st.markdown(
     f'<h1 style="color:{_head_txt};font-weight:800;font-size:1.75rem;margin:0 0 0.45rem 0;line-height:1.15;">'
-    'AquaIntel Analytics</h1>',
+    '💧AquaIntel Analytics</h1>',
     unsafe_allow_html=True,
 )
 st.markdown(f"""
