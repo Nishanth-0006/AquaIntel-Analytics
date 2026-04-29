@@ -140,7 +140,50 @@ AquaIntel-Analytics/
 ```
 
 ---
+🏗️ System Architecture
 
+The AquaIntel Analytics system follows a modular pipeline for data ingestion, processing, prediction, and visualization.
+
+            ┌───────────────────────────┐
+            │   Raw Water Data Sources  │
+            │ (NWDP / CSV / Excel Upload) │
+            └────────────┬──────────────┘
+                         │
+                         ▼
+            ┌───────────────────────────┐
+            │     Data Preprocessing     │
+            │ - Cleaning (NaN handling)  │
+            │ - Feature Selection        │
+            │ - Normalization            │
+            └────────────┬──────────────┘
+                         │
+                         ▼
+            ┌───────────────────────────┐
+            │   Feature Engineering      │
+            │ - pH, Conductivity, Nitrate │
+            │ - Derived Risk Metrics     │
+            └────────────┬──────────────┘
+                         │
+          ┌──────────────┴──────────────┐
+          ▼                             ▼
+┌───────────────────────┐   ┌────────────────────────┐
+│ Machine Learning Layer │   │  Rule-Based Risk Engine │
+│ - Random Forest       │   │ - Threshold Logic       │
+│ - XGBoost             │   │ - Safe/Moderate/Unsafe  │
+│ - Hybrid Model        │   └────────────┬───────────┘
+└────────────┬──────────┘                │
+             ▼                           ▼
+     ┌────────────────────────────────────────┐
+     │        Prediction & Risk Output        │
+     └────────────┬──────────────────────────┘
+                  │
+                  ▼
+     ┌────────────────────────────────────────┐
+     │     Visualization & Dashboard Layer     │
+     │ - Streamlit UI                          │
+     │ - Plotly Charts                         │
+     │ - GIS Risk Map (Mapbox / PyDeck)        │
+     └────────────────────────────────────────┘
 ## ▶️ Getting Started
 
 ```bash
