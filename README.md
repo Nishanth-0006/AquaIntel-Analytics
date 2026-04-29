@@ -138,66 +138,38 @@ AquaIntel-Analytics/
 │── requirements.txt
 │── README.md
 ```
-
 ---
-## 🏗️ System Architecture
-
-The AquaIntel Analytics system is designed as a modular pipeline that processes raw water quality data, applies analytical and predictive models, and visualizes results through an interactive dashboard.
+## 🔄 Workflow
 
 ```text
-            ┌──────────────────────────────┐
-            │   Data Sources               │
-            │ • NWDP Government Data       │
-            │ • Historical Datasets        │
-            │ • User Upload (CSV/Excel)    │
-            └─────────────┬────────────────┘
-                          │
-                          ▼
-            ┌──────────────────────────────┐
-            │   Data Ingestion Layer       │
-            │ • File Upload Handling       │
-            │ • Format Validation          │
-            └─────────────┬────────────────┘
-                          │
-                          ▼
-            ┌──────────────────────────────┐
-            │   Data Preprocessing         │
-            │ • Missing Value Handling     │
-            │ • Cleaning & Transformation  │
-            │ • Feature Selection          │
-            └─────────────┬────────────────┘
-                          │
-                          ▼
-            ┌──────────────────────────────┐
-            │   Feature Engineering        │
-            │ • pH                         │
-            │ • Conductivity               │
-            │ • Nitrate                    │
-            │ • Derived Risk Metrics       │
-            └─────────────┬────────────────┘
-                          │
-          ┌───────────────┴────────────────┐
-          ▼                                ▼
-┌──────────────────────────┐     ┌──────────────────────────┐
-│ Machine Learning Models  │     │ Rule-Based Risk Engine   │
-│ • Random Forest          │     │ • Threshold Logic        │
-│ • XGBoost                │     │ • Risk Classification    │
-│ • Hybrid Model           │     │   (Safe/Moderate/Unsafe) │
-└─────────────┬────────────┘     └─────────────┬────────────┘
-              ▼                                ▼
-        ┌────────────────────────────────────────────┐
-        │        Prediction & Risk Output            │
-        │ • Water Safety Classification              │
-        │ • Risk Levels per District                 │
-        └─────────────┬──────────────────────────────┘
-                      │
-                      ▼
-        ┌────────────────────────────────────────────┐
-        │   Visualization & Presentation Layer       │
-        │ • Streamlit Dashboard                      │
-        │ • Plotly Charts                            │
-        │ • GIS Risk Map (Mapbox / PyDeck)           │
-        └────────────────────────────────────────────┘
+1. Data Input
+   ↓
+   Upload dataset (CSV/Excel) or use existing data
+
+2. Data Preprocessing
+   ↓
+   Clean data, handle missing values, select required parameters
+
+3. Feature Extraction
+   ↓
+   Extract pH, Conductivity, Nitrate
+
+4. Risk Analysis
+   ↓
+   Apply threshold logic to classify:
+   Safe / Moderate / Unsafe
+
+5. Prediction (Optional)
+   ↓
+   Use ML models (Random Forest, XGBoost)
+
+6. Visualization
+   ↓
+   Display charts, insights, and GIS-based risk map
+
+7. Output
+   ↓
+   Show water quality status and district-wise risk levels
 ```
 ---
 
