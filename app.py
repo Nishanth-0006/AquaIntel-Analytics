@@ -894,17 +894,21 @@ def build_uploaded_district_risk_frame(risk_df):
 
 
 # ─── SECTION: Data & Model Loading ─────────────────────────────────────────────
-@st.cache_data
-def load_data():
+@st.cache_data(ttl=3600, show_spinner="Loading CWC Water Quality Data...")
+def load_and_preprocess_data():
     data_dir = os.path.join(os.path.dirname(__file__), "data")
     try:
-        raw = load_all_csvs(data_dir); source = "real"
+        raw = load_all_csvs(data_dir)
+        source = "real"
     except FileNotFoundError:
-        st.warning("No data files found. Generating synthetic data for demonstration.")
-        raw = generate_synthetic_cwc(n=8000); source = "synthetic"
+        st.warning("Real data not found. Using synthetic data.")
+        raw = generate_synthetic_cwc(n=15000)
+        source = "synthetic"
     except Exception as e:
-        st.error(f"Error loading data: {e}. Using synthetic data.")
-        raw = generate_synthetic_cwc(n=8000); source = "synthetic"
+        st.error(f"Error loading data: {e}. Using synthetic.")
+        raw = generate_synthetic_cwc(n=15000)
+        source = "synthetic"
+    
     return preprocess(raw), source
 
 
@@ -922,7 +926,11 @@ def load_models():
     return models
 
 
-df, source = load_data()
+if "df_base" not in st.session_state:
+    st.session_state.df_base, st.session_state.data_source = load_and_preprocess_data()
+
+df = st.session_state.df_base.copy()
+source = st.session_state.data_source
 models     = load_models()
 
 # ─── SECTION: Sidebar ───────────────────────────────────────────────────────────
@@ -1117,13 +1125,27 @@ st.sidebar.markdown("""
 """, unsafe_allow_html=True)
 
 # ─── SECTION: Data Filtering ────────────────────────────────────────────────────
-filt = df.copy()
-if sel_states:
-    filt = filt[filt["state"].isin(sel_states)]
-if sel_years and "year" in filt.columns:
-    filt = filt[(filt["year"] >= sel_years[0]) & (filt["year"] <= sel_years[1])]
-filt = filt[(filt["WQI"] >= wqi_range[0]) & (filt["WQI"] <= wqi_range[1])]
-filt["water_quality"] = filt["water_quality"].astype(str).str.strip()
+def apply_filters(base_df, sel_states, sel_years, wqi_range):
+
+    filt = base_df.copy()
+    
+    if sel_states:
+        filt = filt[filt["state"].isin(sel_states)]
+    
+    if sel_years and "year" in filt.columns:
+        filt = filt[(filt["year"] >= sel_years[0]) & (filt["year"] <= sel_years[1])]
+    
+    # WQI filter using query (faster for large data)
+    if wqi_range and not filt.empty:
+        filt = filt.query(f"WQI >= {wqi_range[0]} and WQI <= {wqi_range[1]}")
+    
+
+    if not filt.empty:
+        filt["water_quality"] = filt["water_quality"].astype(str).str.strip()
+    
+    return filt
+
+filt = apply_filters(df, sel_states, sel_years, wqi_range)
 
 # ─── SECTION: App Header ────────────────────────────────────────────────────────
 _dark = st.session_state.get("dark_mode", False)
