@@ -37,7 +37,7 @@ sns.set_theme(style="whitegrid", palette=PALETTE, font_scale=1.1)
 # ─── load data ───────────────────────────────────────────────────────────────
 DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
 try:
-    raw = load_all_csvs(DATA_DIR)
+    raw = load_all_csvs()
     print(f"✅  Loaded real data: {raw.shape}")
 except FileNotFoundError:
     print("⚠️  No CSVs found in /data — using synthetic demo data (5 000 rows).")

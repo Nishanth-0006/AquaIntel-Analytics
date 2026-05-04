@@ -47,7 +47,10 @@ PALETTE = ["#1f4e79", "#2e86ab", "#a23b72", "#f18f01", "#c73e1d"]
 
 # ─── Load & preprocess ───────────────────────────────────────────────────────
 try:
-    raw = load_all_csvs(DATA_DIR)
+    raw = load_all_csvs()
+    print("RAW SHAPE:", raw.shape)
+    print("RAW COLUMNS:", raw.columns.tolist())
+    print(raw.head())
 except FileNotFoundError:
     print("WARN: Using synthetic data (no CSVs in /data)")
 
@@ -58,7 +61,12 @@ print(f"Dataset shape: {df.shape}")
 print(f"Class balance:\n{df['is_safe'].value_counts(normalize=True).round(3)}\n")
 
 # ─── Feature sets ────────────────────────────────────────────────────────────
-all_features  = [f for f in CORE_FEATURES if f in df.columns]
+# use ALL numeric columns except target-related
+all_features = [
+    col for col in df.columns
+    if col not in ["is_safe", "water_quality", "wqi"]
+    and df[col].dtype != "object"
+]
 
 TARGET = "is_safe"
 

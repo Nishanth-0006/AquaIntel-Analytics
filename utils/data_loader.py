@@ -8,6 +8,8 @@ import os
 import glob
 import pandas as pd
 import numpy as np
+from huggingface_hub import hf_hub_download, list_repo_files
+import pandas as pd
 
 # ── Standard CWC column aliases ──────────────────────────────────────────────
 # CWC files have inconsistent header casing / spacing across states.
@@ -296,36 +298,33 @@ def load_single_csv(path: str, state_code: str = None) -> pd.DataFrame:
     return df
 
 
-def load_all_csvs(data_dir: str) -> pd.DataFrame:
-    """
-    Auto-discover all CSVs in data_dir (and sub-dirs) and concat.
-    Designed to be forward-compatible: just drop new files in.
-    """
-    pattern = os.path.join(data_dir, "**", "*.csv")
-    paths = sorted(glob.glob(pattern, recursive=True))
 
-    if not paths:
-        raise FileNotFoundError(f"No CSV files found in {data_dir}")
+def load_all_csvs(data_dir=None):
+    repo_id = "crushh3/aquaintel-data"
+
+    all_files = list_repo_files(repo_id, repo_type="dataset")
+    csv_files = [f for f in all_files if f.startswith("data/raw/") and f.endswith(".csv")]
+
+    if not csv_files:
+        raise ValueError("No CSV files found in dataset")
 
     frames = []
-    errors = []
-    for p in paths:
+
+    for f in csv_files:
         try:
-            frames.append(load_single_csv(p))
+            path = hf_hub_download(
+                repo_id=repo_id,
+                filename=f,
+                repo_type="dataset"
+            )
+            frames.append(load_single_csv(path))  # ✅ FIXED
         except Exception as e:
-            errors.append(f"  - {os.path.basename(p)}: {e}")
-            print(f"[WARN] Could not load {p}: {e}")
+            print(f"[WARN] Failed to load {f}: {e}")
 
     if not frames:
-        error_msg = f"No CSV files could be loaded from {data_dir}. Errors:\n" + "\n".join(errors)
-        raise ValueError(error_msg)
+        raise ValueError("No CSVs could be loaded")
 
-    if errors:
-        print(f"[INFO] Loaded {len(frames)}/{len(paths)} CSV files. {len(errors)} failed.")
-
-    df = pd.concat(frames, ignore_index=True)
-    return df
-
+    return pd.concat(frames, ignore_index=True)
 
 def compute_wqi(df: pd.DataFrame) -> pd.Series:
     """
@@ -373,24 +372,36 @@ def label_water_quality(wqi: pd.Series) -> pd.Series:
 
 
 def preprocess(df: pd.DataFrame) -> pd.DataFrame:
-    """Full preprocessing pipeline."""
     df = df.copy()
 
-    # Drop columns that are entirely NaN
     df.dropna(axis=1, how="all", inplace=True)
 
-    # Compute WQI
+    # 🔥 ADD THIS
+    COLUMN_MAPPING = {
+        "Dissolved oxygen (mg/L)": "dissolved_oxygen",
+        "Potential of Hydrogen (pH)": "ph",
+        "Total Dissolved Solids (mg/L)": "tds",
+        "Chloride (mg/L)": "chloride",
+        "Sulphate (mg/L)": "sulphate",
+        "Nitrate (mg/L)": "nitrate",
+    }
+    df.rename(columns=COLUMN_MAPPING, inplace=True)
+
     df["WQI"] = compute_wqi(df)
+
+    print("WQI non-null:", df["WQI"].notna().sum())
+
+    df = df[df["WQI"].notna()]
+
     df["water_quality"] = label_water_quality(df["WQI"])
-
-    # Binary safe/unsafe label for classification
     df["is_safe"] = (df["WQI"] <= 50).astype(int)
-
-    # Drop rows with no WQI (all parameters missing)
-    df = df.dropna(subset=["WQI"])
+    if "data acquisition time" in df.columns:
+        df["year"] = pd.to_datetime(
+            df["data acquisition time"],
+            errors="coerce"
+        ).dt.year
 
     return df
-
 
 def generate_synthetic_cwc(n=5000, seed=42) -> pd.DataFrame:
     """

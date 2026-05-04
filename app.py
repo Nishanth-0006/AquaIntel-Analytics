@@ -14,6 +14,8 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
+from huggingface_hub import hf_hub_download
+import joblib
 
 from utils.data_loader import (
     load_all_csvs, generate_synthetic_cwc, preprocess,
@@ -577,7 +579,10 @@ def safety_status(safe_pct):
 
 
 def get_nearest_stations(df, lat, lon, n=3):
-    """Haversine-based nearest monitoring station finder."""
+    """Haversine-based nearest monitoring station finder (unique locations)."""
+
+    from math import radians, sin, cos, sqrt, atan2
+
     def haversine(lat1, lon1, lat2, lon2):
         R = 6371
         dlat = radians(lat2 - lat1)
@@ -586,8 +591,15 @@ def get_nearest_stations(df, lat, lon, n=3):
         return R * 2 * atan2(sqrt(a), sqrt(1 - a))
 
     df2 = df.dropna(subset=["latitude", "longitude"]).copy()
+
+    # 🔥 IMPORTANT FIX: remove duplicate locations
+    df2 = df2.drop_duplicates(subset=["latitude", "longitude"])
+
     df2["distance_km"] = df2.apply(
-        lambda r: haversine(lat, lon, r["latitude"], r["longitude"]), axis=1)
+        lambda r: haversine(lat, lon, r["latitude"], r["longitude"]),
+        axis=1
+    )
+
     return df2.nsmallest(n, "distance_km")
 
 
@@ -656,51 +668,96 @@ def first_property(properties, candidates):
 
 @st.cache_data
 def load_india_district_geojson():
-    path = os.path.join(os.path.dirname(__file__), GEOJSON_RELATIVE_PATH)
-    if not os.path.exists(path):
-        return None
+    from huggingface_hub import hf_hub_download
+    import json
+
     try:
+        path = hf_hub_download(
+            repo_id="crushh3/aquaintel-data",
+            filename="data/geo/india_districts.geojson",
+            repo_type="dataset"
+        )
+
         with open(path, "r", encoding="utf-8") as f:
             geojson = json.load(f)
+
+        # 🔥 CRITICAL FIX: add plotly_key to every feature
+        for feature in geojson["features"]:
+            props = feature.get("properties", {})
+
+            district = first_property(
+                props,
+                ["district", "DISTRICT", "district_name", "NAME_2", "name"]
+            )
+
+            props["plotly_key"] = str(district).lower().strip()
+
+        return geojson
+
     except Exception as e:
-        st.warning(f"Could not load district GeoJSON: {e}")
+        st.error(f"GeoJSON failed: {e}")
         return None
-    district_keys = ["district","District","DISTRICT","district_name","DISTRICT_NAME",
-        "dist_name","DIST_NAME","dt_name","DT_NAME","dtname","DTNAME","NAME_2","NAME2","name","Name","NAME"]
-    state_keys = ["state","State","STATE","state_name","STATE_NAME","st_nm","ST_NM","stname","STNAME","NAME_1","NAME1"]
-    for feature in geojson.get("features", []):
-        properties = feature.setdefault("properties", {})
-        district   = first_property(properties, district_keys)
-        state      = first_property(properties, state_keys)
-        properties["plotly_key"] = make_district_key(state, district)
-    return geojson
 
 
 @st.cache_data
 def build_district_choropleth_frame(frame):
     if frame.empty or "WQI" not in frame.columns:
         return pd.DataFrame(columns=["state", "district", "WQI", "plotly_key"])
+
     district_col = next((c for c in ["district","District","district_name"] if c in frame.columns), None)
     state_col    = next((c for c in ["state","State","state_name"] if c in frame.columns), None)
+
     if district_col is None:
         return pd.DataFrame(columns=["state", "district", "WQI", "plotly_key"])
+
     cols = [district_col, "WQI"]
-    if state_col: cols.insert(0, state_col)
+    if state_col:
+        cols.insert(0, state_col)
+
     district_df = frame[cols].dropna(subset=[district_col, "WQI"]).copy()
+
     if district_df.empty:
         return pd.DataFrame(columns=["state", "district", "WQI", "plotly_key"])
-    rename_map = {district_col: "district"}
-    if state_col: rename_map[state_col] = "state"
-    district_df = district_df.rename(columns=rename_map)
-    if "state" not in district_df.columns: district_df["state"] = ""
-    district_df["district"] = district_df["district"].astype(str).str.strip()
-    district_df["state"]    = district_df["state"].astype(str).str.strip()
-    district_df = (district_df.groupby(["state","district"], as_index=False)["WQI"]
-        .mean().sort_values("WQI", ascending=False))
-    district_df["plotly_key"] = district_df.apply(
-        lambda row: make_district_key(row["state"], row["district"]), axis=1)
-    return district_df
 
+    rename_map = {district_col: "district"}
+    if state_col:
+        rename_map[state_col] = "state"
+
+    district_df = district_df.rename(columns=rename_map)
+
+    if "state" not in district_df.columns:
+        district_df["state"] = ""
+
+    # 🔥 CRITICAL FIX: normalize names
+    district_df["district"] = (
+        district_df["district"]
+        .astype(str)
+        .str.lower()
+        .str.strip()
+    )
+
+    district_df["state"] = (
+        district_df["state"]
+        .astype(str)
+        .str.lower()
+        .str.strip()
+    )
+
+    # aggregate
+    district_df = (
+        district_df
+        .groupby(["state","district"], as_index=False)["WQI"]
+        .mean()
+        .sort_values("WQI", ascending=False)
+    )
+
+    district_df["plotly_key"] = (
+        district_df["district"]
+        .astype(str)
+        .str.lower()
+        .str.strip()
+    )
+    return district_df
 
 UPLOAD_COLUMN_CANDIDATES = {
     "district": [
@@ -898,7 +955,7 @@ def build_uploaded_district_risk_frame(risk_df):
 def load_and_preprocess_data():
     data_dir = os.path.join(os.path.dirname(__file__), "data")
     try:
-        raw = load_all_csvs(data_dir)
+        raw = load_all_csvs()
         source = "real"
     except FileNotFoundError:
         st.warning("Real data not found. Using synthetic data.")
@@ -913,25 +970,43 @@ def load_and_preprocess_data():
 
 
 @st.cache_resource
-def load_models():
-    model_dir = os.path.join(os.path.dirname(__file__), "models")
-    models = {}
-    for f in ["rf_full.pkl", "xgb_full.pkl", "hybrid_soft.pkl"]:
-        path = os.path.join(model_dir, f)
-        if os.path.exists(path):
-            try:
-                models[f.replace(".pkl", "")] = joblib.load(path)
-            except Exception as e:
-                st.warning(f"Could not load model {f}: {e}")
-    return models
+def load_model():
+    from huggingface_hub import hf_hub_download
+    import joblib
 
+    path = hf_hub_download(
+        repo_id="crushh3/aquaintel-data",
+        filename="models/rf_full.pkl",
+        repo_type="dataset"
+    )
+
+    loaded = joblib.load(path)
+
+    # 🔥 Handle dict structure
+    if isinstance(loaded, dict):
+        model = loaded["model"]
+        features = loaded["features"]
+    else:
+        model = loaded
+
+        if hasattr(model, "feature_names_in_"):
+            features = list(model.feature_names_in_)
+        elif hasattr(model, "named_steps"):
+            for step in model.named_steps.values():
+                if hasattr(step, "feature_names_in_"):
+                    features = list(step.feature_names_in_)
+                    break
+        else:
+            raise ValueError("Could not extract feature names from model")
+
+    return model, features
 
 if "df_base" not in st.session_state:
     st.session_state.df_base, st.session_state.data_source = load_and_preprocess_data()
 
 df = st.session_state.df_base.copy()
 source = st.session_state.data_source
-models     = load_models()
+model, features = load_model()
 
 # ─── SECTION: Sidebar ───────────────────────────────────────────────────────────
 st.sidebar.markdown("""
@@ -2110,53 +2185,66 @@ with tab5:
     st.caption("Enter parameter values below to predict water safety using trained ML models. "
                "Default values represent a realistic moderate-quality water sample.")
 
-    if models and "rf_full" in models:
-        model_rf = models["rf_full"]["model"]
-        features = models["rf_full"]["features"]
-        inputs   = {}
+    if model:
+        model_rf = model
+        inputs = {}
+        exclude_ui = [
+               "is_safe",
+                "water_quality",
+                "wqi",
+
+                # metadata / useless
+                "slno",
+                "state lgd code",
+                "district lgd code",
+                "latitude",
+                "longitude",
+                "WQI",
+
+                # duplicate / noisy
+                "nitrate n (mgn/l)"
+            ]
+
+        features = [f for f in features if f not in exclude_ui]
 
         with st.container(border=True):
             cols_p = st.columns(3)
+
             for i, feat in enumerate(features):
                 default_val = float(PREDICT_DEFAULTS.get(feat, 0.0))
+
                 inputs[feat] = cols_p[i % 3].number_input(
                     PARAM_LABELS.get(feat, feat),
                     value=default_val,
                     key=f"pred_{feat}",
                 )
-            predict_clicked = st.button("Generate Prediction", use_container_width=True, key="predict_main_btn")
+
+            predict_clicked = st.button(
+                "Generate Prediction",
+                use_container_width=True,
+                key="predict_main_btn"
+            )
 
         if predict_clicked:
             input_df = pd.DataFrame([inputs])[features]
-            rf_pred = xgb_pred = hybrid_pred = None
 
-            col1p, col2p, col3p = st.columns(3)
-            with col1p:
-                rf_pred = model_rf.predict(input_df)[0]
-                if rf_pred == 1: st.success("Your Water is Safe For Drinking")
-                else:            st.error("Your Water is NOT Safe For Drinking")
+            rf_pred = model_rf.predict(input_df)[0]
 
-            if "xgb_full" in models:
-                with col2p:
-                    xgb_pred = models["xgb_full"]["model"].predict(input_df)[0]
-                    if xgb_pred == 1: st.success("Your Water is Safe For Drinking")
-                    else:             st.error("Your Water is NOT Safe For Drinking")
-
-            if "hybrid_soft" in models:
-                with col3p:
-                    hybrid_pred = models["hybrid_soft"]["model"].predict(input_df)[0]
-                    if hybrid_pred == 1: st.success("Your Water is Safe For Drinking")
-                    else:                st.error("Your Water is NOT Safe For Drinking")
+            if rf_pred == 1:
+                st.success("Your Water is Safe For Drinking")
+            else:
+                st.error("Your Water is NOT Safe For Drinking")
 
             st.markdown("---")
-            pred_summary = {"RF (Main)": "Safe" if rf_pred == 1 else "Unsafe"}
-            if xgb_pred    is not None: pred_summary["XGBoost"]    = "Safe" if xgb_pred    == 1 else "Unsafe"
-            if hybrid_pred is not None: pred_summary["Soft Hybrid"] = "Safe" if hybrid_pred == 1 else "Unsafe"
+
+            pred_summary = {
+                "Random Forest (Main Model)": "Safe" if rf_pred == 1 else "Unsafe"
+            }
+
             st.dataframe(pd.DataFrame(list(pred_summary.items()), columns=["Model", "Prediction"]))
-    elif not models:
-        st.warning("No models found. Run `model_dev.py` first to train and save models.")
+
     else:
-        st.warning("RF model (rf_full) not found. Run `model_dev.py` to train models.")
+        st.warning("Model not loaded. Please check Hugging Face model path.")
 
     # ── Lite Prediction ───────────────────────────────────────────────────────────
     st.markdown("---")
@@ -2202,74 +2290,125 @@ with tab5:
         analyze_clicked = st.button("Analyze Current Location", use_container_width=True, key="loc_analyze_btn")
 
     if analyze_clicked:
-        nearest = get_nearest_stations(filt, user_lat, user_lon, n=3)
-
-        if not nearest.empty and nearest["distance_km"].min() > 30:
-            st.warning("No nearby monitoring stations within 30 km. Results may be less accurate.")
-
-        if "rf_full" not in models:
-            st.error("Model not loaded. Run model_dev.py first.")
+        if model is None or features is None:
+            st.error("Model not loaded.")
         else:
-            model_loc = models["rf_full"]["model"]
-            feat_loc  = models["rf_full"]["features"]
             st.markdown("**Nearest Monitoring Stations**")
-            weighted_sum = total_weight = 0
+
+            weighted_sum = 0
+            total_weight = 0
             results = []
+            filt_unique = filt.drop_duplicates(subset=["latitude", "longitude"])
+            nearest = get_nearest_stations(filt_unique, user_lat, user_lon, n=3)
 
-            for _, row in nearest.iterrows():
-                input_data   = pd.DataFrame([{f: row.get(f, 0) for f in feat_loc}])
-                pred         = model_loc.predict(input_data)[0]
-                proba        = model_loc.predict_proba(input_data)[0][1]
-                distance     = row["distance_km"]
-                adjusted_conf = proba * np.exp(-distance / 150)
-                weight        = np.exp(-distance / 50)
-                weighted_sum += proba * weight
-                total_weight += weight
-                prediction    = "SAFE" if pred == 1 else "UNSAFE"
-                if row.get("WQI") and row["WQI"] > 50:
-                    prediction = "UNSAFE"
-                results.append({
-                    "Station":       row.get("station_name", row.get("station", "Unknown")),
-                    "Distance (km)": round(distance, 2),
-                    "WQI":           row.get("WQI"),
-                    "Prediction":    prediction,
-                    "Confidence":    round(adjusted_conf, 3),
-                    "latitude":      row["latitude"],
-                    "longitude":     row["longitude"],
-                })
-
-            results_df = pd.DataFrame(results)
-            st.dataframe(results_df)
-
-            final_score = weighted_sum / total_weight if total_weight > 0 else 0
-            st.markdown("**Final Decision**")
-            st.write(f"Weighted Safety Score: **{final_score:.2%}**")
-            if final_score > 0.5:
-                st.success("Overall: Water in this area is likely SAFE.")
+            if nearest.empty:
+                st.error("No station data available.")
             else:
-                st.error("Overall: Water in this area is likely UNSAFE. Advise treatment.")
+                for _, row in nearest.iterrows():
 
-            _map_bg = "#1e293b" if _dark5 else "#ffffff"
-            fig_loc = px.scatter_mapbox(
-                results_df, lat="latitude", lon="longitude",
-                color="Prediction", size="WQI", size_max=18, zoom=6,
-                center={"lat": user_lat, "lon": user_lon},
-                mapbox_style="carto-positron",
-                hover_data={"Station": True, "Distance (km)": True,
-                            "Confidence": True, "latitude": False, "longitude": False},
-            )
-            fig_loc.add_scattermapbox(lat=[user_lat], lon=[user_lon], mode="markers",
-                marker=dict(size=14, color="black"), name="Your Location")
-            for _, row in results_df.iterrows():
-                fig_loc.add_scattermapbox(
-                    lat=[user_lat, row["latitude"]], lon=[user_lon, row["longitude"]],
-                    mode="lines", line=dict(width=2, color="red"),
-                    name=f'To {row["Station"]}', hoverinfo="none", showlegend=False,
-                )
-            fig_loc.update_layout(height=500, margin=dict(l=0, r=0, t=30, b=0),
-                paper_bgcolor=_map_bg,
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
-            st.plotly_chart(fig_loc, use_container_width=True)
+                    # build input using model features
+                    input_row = {f: row.get(f, 0) for f in features}
+
+                    input_df = pd.DataFrame([input_row])
+
+                    # ensure all expected columns exist
+                    for f in model.feature_names_in_:
+                        if f not in input_df.columns:
+                            input_df[f] = 0
+
+                    input_df = input_df[model.feature_names_in_]
+
+                    try:
+                        pred = model.predict(input_df)[0]
+                        proba = model.predict_proba(input_df)[0][1]
+                    except Exception as e:
+                        st.error(f"Prediction error: {e}")
+                        continue
+
+                    distance = row["distance_km"]
+
+                    weight = np.exp(-distance / 50)
+                    weighted_sum += proba * weight
+                    total_weight += weight
+
+                    results.append({
+                        "Station": row.get("station", "Unknown"),
+                        "Distance (km)": round(distance, 2),
+                        "Prediction": "SAFE" if pred == 1 else "UNSAFE",
+                        "Confidence": round(proba, 3),
+                        "latitude": row["latitude"],
+                        "longitude": row["longitude"],
+                    })
+
+                if results:
+                    results_df = pd.DataFrame(results)
+                    st.dataframe(results_df, use_container_width=True, hide_index=True)
+                    # Ensure numeric
+                    results_df["latitude"] = pd.to_numeric(results_df["latitude"], errors="coerce")
+                    results_df["longitude"] = pd.to_numeric(results_df["longitude"], errors="coerce")
+
+                    results_df = results_df.dropna(subset=["latitude", "longitude"])
+
+                    if not results_df.empty:
+
+                        # 🔥 Force visible marker size + colors
+                        fig_loc = px.scatter_mapbox(
+                            results_df,
+                            lat="latitude",
+                            lon="longitude",
+                            color="Prediction",
+                            zoom=10,
+                            center={"lat": user_lat, "lon": user_lon},
+                            mapbox_style="carto-positron",
+                            hover_name="Station",
+                            hover_data={
+                                "Distance (km)": True,
+                                "Confidence": True,
+                                "latitude": False,
+                                "longitude": False
+                            },
+                            color_discrete_map={
+                                "SAFE": "#00FF7F",   # bright green
+                                "UNSAFE": "#FF4C4C"  # bright red
+                            }
+                        )
+
+                        # 🔥 CRITICAL: force marker visibility
+                        fig_loc.update_traces(
+                            marker=dict(size=16, opacity=0.95),
+                            selector=dict(mode="markers")
+                        )
+
+                        # 🔥 Add user location marker (always visible)
+                        fig_loc.add_scattermapbox(
+                            lat=[user_lat],
+                            lon=[user_lon],
+                            mode="markers",
+                            marker=dict(size=18, color="black", symbol="star"),
+                            name="You"
+                        )
+
+                        # 🔥 Layout fix (prevents clipping)
+                        fig_loc.update_layout(
+                            height=500,
+                            margin=dict(l=0, r=0, t=20, b=0)
+                        )
+
+                        st.plotly_chart(fig_loc, use_container_width=True)
+
+                    else:
+                        st.warning("No valid coordinates to display on map.")
+
+                    final_score = weighted_sum / total_weight if total_weight > 0 else 0
+
+                    st.markdown("---")
+
+                    if final_score > 0.5:
+                        st.success(f"✅ Likely SAFE ({final_score:.1%})")
+                    else:
+                        st.error(f"🚨 Likely UNSAFE ({final_score:.1%})")
+                else:
+                    st.error("Model/Features not loaded correctly. Check your HF Hub connection.")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
